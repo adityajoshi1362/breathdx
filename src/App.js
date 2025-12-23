@@ -1235,16 +1235,23 @@ function DiagnosisPage({ navigateTo, patientData, sessionData, currentSessionId 
       for (let i = 6; i > 0; i--) {
         if (stopping) return;
         setCountdown(i);
+          await firestoreAPI.setDoc('active_monitoring/current', {
+          patient_id: patientData.id,
+          session_id: currentSessionId,
+          subsession_id: sessionData.id,
+          monitoring: true,
+          timestamp: new Date().toISOString()
+        });
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
 
-      await firestoreAPI.setDoc('active_monitoring/current', {
-        patient_id: patientData.id,
-        session_id: currentSessionId,
-        subsession_id: sessionData.id,
-        monitoring: true,
-        timestamp: new Date().toISOString()
-      });
+      // await firestoreAPI.setDoc('active_monitoring/current', {
+      //   patient_id: patientData.id,
+      //   session_id: currentSessionId,
+      //   subsession_id: sessionData.id,
+      //   monitoring: true,
+      //   timestamp: new Date().toISOString()
+      // });
 
       setPhase('blowing');
       setCountdown(10);
