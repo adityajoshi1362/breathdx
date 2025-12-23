@@ -56,6 +56,30 @@ const firestoreAPI = {
     return response.ok;
   },
 
+  async createSessionResultRequest(sessionId) {
+    const url = `${this.getFirestoreUrl()}/session_result_request/display?key=${FIREBASE_CONFIG.apiKey}`;
+    const response = await fetch(url, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        fields: {
+          session_id: { stringValue: sessionId },
+          display: { booleanValue: true },
+          timestamp: { timestampValue: new Date().toISOString() }
+        }
+      })
+    });
+    return response.ok;
+  },
+
+  async clearSessionResultRequest() {
+    const url = `${this.getFirestoreUrl()}/session_result_request/display?key=${FIREBASE_CONFIG.apiKey}`;
+    const response = await fetch(url, { method: 'DELETE' });
+    return response.ok;
+  },
+
+  
+
   // Update the parseDocument function in firestoreAPI
 parseDocument(doc) {
   if (!doc || !doc.fields) return null;
@@ -1869,6 +1893,15 @@ function ResultsPage({ navigateTo, patientData, sessionData, currentSessionId })
     calculateResults();
   }, []);
 
+  useEffect(() => {
+    return () => {
+      // Cleanup: Clear display request when leaving results page
+      firestoreAPI.clearSessionResultRequest().catch(err => {
+        console.log('Failed to clear display request:', err);
+      });
+    };
+  }, []);
+
   const calculateResults = async () => {
     try {
       await new Promise(resolve => setTimeout(resolve, 2000));
@@ -2033,6 +2066,69 @@ function ResultsPage({ navigateTo, patientData, sessionData, currentSessionId })
   // };
 
 
+  // const loadSessionSummary = async () => {
+  //   try {
+  //     const subsessions = await firestoreAPI.getCollection(
+  //       `patients/${patientData.id}/sessions/${currentSessionId}/subsessions`
+  //     );
+
+  //     // Filter subsessions that have results
+  //     const validResults = subsessions.filter(s => s.avgTemp !== undefined);
+
+  //     if (validResults.length > 0) {
+  //       const avgTemp = validResults.reduce((a, b) => a + b.avgTemp, 0) / validResults.length;
+  //       const avgHumidity = validResults.reduce((a, b) => a + b.avgHumidity, 0) / validResults.length;
+  //       const avgLowestSGP40 = validResults.reduce((a, b) => a + b.avgLowestSGP40, 0) / validResults.length;
+  //       const avgHighestMQ2 = validResults.reduce((a, b) => a + b.avgHighestMQ2, 0) / validResults.length;
+
+  //       const sessionResultData = {
+  //         avgTemp: avgTemp.toFixed(2),
+  //         avgHumidity: avgHumidity.toFixed(2),
+  //         avgLowestSGP40: avgLowestSGP40.toFixed(2),
+  //         avgHighestMQ2: avgHighestMQ2.toFixed(2),
+  //         subsessionCount: validResults.length,
+  //         subsessions: validResults
+  //       };
+
+  //       setSessionSummary(sessionResultData);
+
+  //       // FETCH EXISTING SESSION DATA FIRST
+  //       const existingSession = await firestoreAPI.getDoc(
+  //         `patients/${patientData.id}/sessions/${currentSessionId}`
+  //       );
+
+  //       // MERGE EXISTING DATA WITH NEW RESULT FIELDS
+  //       await firestoreAPI.updateDoc(
+  //         `patients/${patientData.id}/sessions/${currentSessionId}`,
+  //         {
+  //           // Preserve existing session details
+  //           session_ID: existingSession?.session_ID || currentSessionId,
+  //           patientName: existingSession?.patientName || patientData.name,
+  //           patientId: existingSession?.patientId || patientData.id,
+  //           mealTime: existingSession?.mealTime,
+  //           alcoholConsumption: existingSession?.alcoholConsumption,
+  //           bloodGlucose: existingSession?.bloodGlucose,
+  //           sessionDuration: existingSession?.sessionDuration,
+  //           createdAt: existingSession?.createdAt,
+            
+  //           // Add/Update result fields
+  //           avgLowestSGP40: parseFloat(avgLowestSGP40.toFixed(2)),
+  //           avgHighestMQ2: parseFloat(avgHighestMQ2.toFixed(2)),
+  //           avgTemp: parseFloat(avgTemp.toFixed(2)),
+  //           avgHumidity: parseFloat(avgHumidity.toFixed(2)),
+  //           subsessionCount: validResults.length,
+  //           resultsTimestamp: new Date().toISOString(),
+  //           status: 'completed'
+  //         }
+  //       );
+  //     }
+
+  //     setShowSessionSummary(true);
+  //   } catch (err) {
+  //     console.error('Error loading session summary:', err);
+  //   }
+  // };
+
   const loadSessionSummary = async () => {
     try {
       const subsessions = await firestoreAPI.getCollection(
@@ -2088,11 +2184,21 @@ function ResultsPage({ navigateTo, patientData, sessionData, currentSessionId })
             status: 'completed'
           }
         );
+
+        // *** SEND DISPLAY REQUEST TO ESP32 ***
+        const requestSent = await firestoreAPI.createSessionResultRequest(currentSessionId);
+        
+        if (requestSent) {
+          alert('✅ Session result sent to OLED display!\n\nCheck your ESP32:\n• OLED Screen\n• Serial Monitor');
+        } else {
+          alert('⚠️ Results saved, but failed to send to ESP32. Please check your connection.');
+        }
       }
 
       setShowSessionSummary(true);
     } catch (err) {
       console.error('Error loading session summary:', err);
+      alert('❌ Error loading session summary. Please try again.');
     }
   };
 
