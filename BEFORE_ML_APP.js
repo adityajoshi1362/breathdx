@@ -128,65 +128,6 @@ parseDocument(doc) {
   }
 };
 
-
-// Machine Learning Model for Blood Glucose Prediction
-const BloodGlucoseModel = {
-  // Polynomial coefficients from your trained model
-  // y = c0 + c1*x + c2*x^2
-  coefficients: {
-    intercept: 69.87654321,  // c0
-    linear: 0.04876543,      // c1  
-    quadratic: 0.00001234    // c2
-  },
-
-  predict(sgp40Difference) {
-    const { intercept, linear, quadratic } = this.coefficients;
-    const x = sgp40Difference;
-    const x2 = x * x;
-    
-    // Polynomial regression: y = c0 + c1*x + c2*x^2
-    const prediction = intercept + (linear * x) + (quadratic * x2);
-    
-    return Math.max(0, prediction); // Ensure non-negative
-  },
-
-  calculateFromSensorData(sensorData) {
-    if (!sensorData || sensorData.length < 5) {
-      throw new Error("Minimum 5 SGP40 readings required");
-    }
-
-    const sgp40Values = sensorData
-      .map(d => d.sgp40_raw || 0)
-      .filter(v => v > 0)
-      .sort((a, b) => b - a);
-
-    if (sgp40Values.length < 5) {
-      throw new Error("Not enough valid SGP40 readings");
-    }
-
-    // Calculate average of 5 highest values
-    const top5Avg = sgp40Values.slice(0, 5).reduce((a, b) => a + b, 0) / 5;
-    
-    // Calculate average of 5 lowest values
-    const bottom5Avg = sgp40Values.slice(-5).reduce((a, b) => a + b, 0) / 5;
-    
-    // Calculate difference
-    const sgp40Difference = top5Avg - bottom5Avg;
-    
-    // Predict blood glucose
-    const predictedGlucose = this.predict(sgp40Difference);
-
-    return {
-      max5Avg: parseFloat(top5Avg.toFixed(2)),
-      min5Avg: parseFloat(bottom5Avg.toFixed(2)),
-      sgp40Difference: parseFloat(sgp40Difference.toFixed(2)),
-      predictedBloodGlucose: parseFloat(predictedGlucose.toFixed(2))
-    };
-  }
-};
-
-
-
 // Main App Component
 function App() {
   const [currentPage, setCurrentPage] = useState('login');
@@ -1948,18 +1889,6 @@ function DiagnosisPage({ navigateTo, patientData, sessionData, currentSessionId 
 // }
 
 
-// // Results Page Component - UPDATED VERSION
-// function ResultsPage({ navigateTo, patientData, sessionData, currentSessionId }) {
-//   const [results, setResults] = useState(null);
-//   const [showSessionSummary, setShowSessionSummary] = useState(false);
-//   const [sessionSummary, setSessionSummary] = useState(null);
-//   const [error, setError] = useState(null);
-
-//   useEffect(() => {
-//     calculateResults();
-//   }, []);
-
-
 // Results Page Component - UPDATED VERSION
 function ResultsPage({ navigateTo, patientData, sessionData, currentSessionId }) {
   const [results, setResults] = useState(null);
@@ -1980,71 +1909,71 @@ function ResultsPage({ navigateTo, patientData, sessionData, currentSessionId })
     };
   }, []);
 
-  // const calculateResults = async () => {
-  //   try {
-  //     await new Promise(resolve => setTimeout(resolve, 2000));
+  const calculateResults = async () => {
+    try {
+      await new Promise(resolve => setTimeout(resolve, 2000));
       
-  //     const readings = await firestoreAPI.getCollection(
-  //       `patients/${patientData.id}/sessions/${currentSessionId}/subsessions/${sessionData.id}/sensor_data`
-  //     );
+      const readings = await firestoreAPI.getCollection(
+        `patients/${patientData.id}/sessions/${currentSessionId}/subsessions/${sessionData.id}/sensor_data`
+      );
 
-  //     if (!readings || readings.length === 0) {
-  //       setError('No sensor data collected. Please check microcontroller connection.');
-  //       setResults({ avgLowestSGP40: '0.00', avgHighestMQ2: '0.00', avgTemp: '0.00', avgHumidity: '0.00', chartData: [] });
-  //       return;
-  //     }
+      if (!readings || readings.length === 0) {
+        setError('No sensor data collected. Please check microcontroller connection.');
+        setResults({ avgLowestSGP40: '0.00', avgHighestMQ2: '0.00', avgTemp: '0.00', avgHumidity: '0.00', chartData: [] });
+        return;
+      }
 
-  //     // Calculate 10 lowest SGP40 values
-  //     const sgp40Values = readings.map(r => r.sgp40_raw || 0).sort((a, b) => a - b);
-  //     const avgLowestSGP40 = sgp40Values.slice(0, Math.min(10, sgp40Values.length))
-  //       .reduce((a, b) => a + b, 0) / Math.min(10, sgp40Values.length);
+      // Calculate 10 lowest SGP40 values
+      const sgp40Values = readings.map(r => r.sgp40_raw || 0).sort((a, b) => a - b);
+      const avgLowestSGP40 = sgp40Values.slice(0, Math.min(10, sgp40Values.length))
+        .reduce((a, b) => a + b, 0) / Math.min(10, sgp40Values.length);
       
-  //     // Calculate 10 highest MQ2 values
-  //     const mq2Values = readings.map(r => r.mq2_adc || 0).sort((a, b) => b - a);
-  //     const avgHighestMQ2 = mq2Values.slice(0, Math.min(10, mq2Values.length))
-  //       .reduce((a, b) => a + b, 0) / Math.min(10, mq2Values.length);
+      // Calculate 10 highest MQ2 values
+      const mq2Values = readings.map(r => r.mq2_adc || 0).sort((a, b) => b - a);
+      const avgHighestMQ2 = mq2Values.slice(0, Math.min(10, mq2Values.length))
+        .reduce((a, b) => a + b, 0) / Math.min(10, mq2Values.length);
       
-  //     // Calculate average temperature and humidity
-  //     const avgTemp = readings.reduce((a, b) => a + (b.temperature || 0), 0) / readings.length;
-  //     const avgHumidity = readings.reduce((a, b) => a + (b.humidity || 0), 0) / readings.length;
+      // Calculate average temperature and humidity
+      const avgTemp = readings.reduce((a, b) => a + (b.temperature || 0), 0) / readings.length;
+      const avgHumidity = readings.reduce((a, b) => a + (b.humidity || 0), 0) / readings.length;
 
-  //     const chartData = readings.map((r, idx) => ({
-  //       index: idx + 1,
-  //       temperature: r.temperature || 0,
-  //       humidity: r.humidity || 0,
-  //       sgp40: r.sgp40_raw || 0,
-  //       mq2: r.mq2_adc || 0
-  //     }));
+      const chartData = readings.map((r, idx) => ({
+        index: idx + 1,
+        temperature: r.temperature || 0,
+        humidity: r.humidity || 0,
+        sgp40: r.sgp40_raw || 0,
+        mq2: r.mq2_adc || 0
+      }));
 
-  //     const resultData = {
-  //       avgLowestSGP40: avgLowestSGP40.toFixed(2),
-  //       avgHighestMQ2: avgHighestMQ2.toFixed(2),
-  //       avgTemp: avgTemp.toFixed(2),
-  //       avgHumidity: avgHumidity.toFixed(2),
-  //       chartData
-  //     };
+      const resultData = {
+        avgLowestSGP40: avgLowestSGP40.toFixed(2),
+        avgHighestMQ2: avgHighestMQ2.toFixed(2),
+        avgTemp: avgTemp.toFixed(2),
+        avgHumidity: avgHumidity.toFixed(2),
+        chartData
+      };
 
-  //     setResults(resultData);
+      setResults(resultData);
 
-  //     // STORE RESULTS IN SUBSESSION
-  //     await firestoreAPI.setDoc(
-  //       `patients/${patientData.id}/sessions/${currentSessionId}/subsessions/${sessionData.id}`,
-  //       {
-  //         subsession_ID: sessionData.id,
-  //         timestamp: new Date().toISOString(),
-  //         status: 'completed',
-  //         avgLowestSGP40: parseFloat(avgLowestSGP40.toFixed(2)),
-  //         avgHighestMQ2: parseFloat(avgHighestMQ2.toFixed(2)),
-  //         avgTemp: parseFloat(avgTemp.toFixed(2)),
-  //         avgHumidity: parseFloat(avgHumidity.toFixed(2))
-  //       }
-  //     );
-  //   } catch (err) {
-  //     console.error('Error calculating results:', err);
-  //     setError('Error loading results. Please try again.');
-  //     setResults({ avgLowestSGP40: '0.00', avgHighestMQ2: '0.00', avgTemp: '0.00', avgHumidity: '0.00', chartData: [] });
-  //   }
-  // };
+      // STORE RESULTS IN SUBSESSION
+      await firestoreAPI.setDoc(
+        `patients/${patientData.id}/sessions/${currentSessionId}/subsessions/${sessionData.id}`,
+        {
+          subsession_ID: sessionData.id,
+          timestamp: new Date().toISOString(),
+          status: 'completed',
+          avgLowestSGP40: parseFloat(avgLowestSGP40.toFixed(2)),
+          avgHighestMQ2: parseFloat(avgHighestMQ2.toFixed(2)),
+          avgTemp: parseFloat(avgTemp.toFixed(2)),
+          avgHumidity: parseFloat(avgHumidity.toFixed(2))
+        }
+      );
+    } catch (err) {
+      console.error('Error calculating results:', err);
+      setError('Error loading results. Please try again.');
+      setResults({ avgLowestSGP40: '0.00', avgHighestMQ2: '0.00', avgTemp: '0.00', avgHumidity: '0.00', chartData: [] });
+    }
+  };
 
   // const loadSessionSummary = async () => {
   //   try {
@@ -2207,179 +2136,6 @@ function ResultsPage({ navigateTo, patientData, sessionData, currentSessionId })
   //   }
   // };
 
-  const calculateResults = async () => {
-    try {
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      const readings = await firestoreAPI.getCollection(
-        `patients/${patientData.id}/sessions/${currentSessionId}/subsessions/${sessionData.id}/sensor_data`
-      );
-
-      if (!readings || readings.length === 0) {
-        setError('No sensor data collected. Please check microcontroller connection.');
-        setResults({ 
-          avgLowestSGP40: '0.00', 
-          avgHighestMQ2: '0.00', 
-          avgTemp: '0.00', 
-          avgHumidity: '0.00', 
-          predictedBloodGlucose: '0.00',
-          chartData: [] 
-        });
-        return;
-      }
-
-      // Calculate 10 lowest SGP40 values
-      const sgp40Values = readings.map(r => r.sgp40_raw || 0).sort((a, b) => a - b);
-      const avgLowestSGP40 = sgp40Values.slice(0, Math.min(10, sgp40Values.length))
-        .reduce((a, b) => a + b, 0) / Math.min(10, sgp40Values.length);
-      
-      // Calculate 10 highest MQ2 values
-      const mq2Values = readings.map(r => r.mq2_adc || 0).sort((a, b) => b - a);
-      const avgHighestMQ2 = mq2Values.slice(0, Math.min(10, mq2Values.length))
-        .reduce((a, b) => a + b, 0) / Math.min(10, mq2Values.length);
-      
-      // Calculate average temperature and humidity
-      const avgTemp = readings.reduce((a, b) => a + (b.temperature || 0), 0) / readings.length;
-      const avgHumidity = readings.reduce((a, b) => a + (b.humidity || 0), 0) / readings.length;
-
-      // *** ML MODEL PREDICTION ***
-      let mlPrediction = null;
-      let predictedBloodGlucose = 0;
-
-      try {
-        mlPrediction = BloodGlucoseModel.calculateFromSensorData(readings);
-        predictedBloodGlucose = mlPrediction.predictedBloodGlucose;
-        console.log('ML Prediction:', mlPrediction);
-      } catch (mlError) {
-        console.error('ML Prediction Error:', mlError);
-        setError(`ML Model: ${mlError.message}`);
-      }
-
-      const chartData = readings.map((r, idx) => ({
-        index: idx + 1,
-        temperature: r.temperature || 0,
-        humidity: r.humidity || 0,
-        sgp40: r.sgp40_raw || 0,
-        mq2: r.mq2_adc || 0
-      }));
-
-      const resultData = {
-        avgLowestSGP40: avgLowestSGP40.toFixed(2),
-        avgHighestMQ2: avgHighestMQ2.toFixed(2),
-        avgTemp: avgTemp.toFixed(2),
-        avgHumidity: avgHumidity.toFixed(2),
-        predictedBloodGlucose: predictedBloodGlucose.toFixed(2),
-        mlModelData: mlPrediction,
-        chartData
-      };
-
-      setResults(resultData);
-
-      // STORE RESULTS IN SUBSESSION (including ML prediction)
-      await firestoreAPI.setDoc(
-        `patients/${patientData.id}/sessions/${currentSessionId}/subsessions/${sessionData.id}`,
-        {
-          subsession_ID: sessionData.id,
-          timestamp: new Date().toISOString(),
-          status: 'completed',
-          avgLowestSGP40: parseFloat(avgLowestSGP40.toFixed(2)),
-          avgHighestMQ2: parseFloat(avgHighestMQ2.toFixed(2)),
-          avgTemp: parseFloat(avgTemp.toFixed(2)),
-          avgHumidity: parseFloat(avgHumidity.toFixed(2)),
-          predictedBloodGlucose: predictedBloodGlucose,
-          mlModelMax5Avg: mlPrediction?.max5Avg,
-          mlModelMin5Avg: mlPrediction?.min5Avg,
-          mlModelSGP40Diff: mlPrediction?.sgp40Difference
-        }
-      );
-    } catch (err) {
-      console.error('Error calculating results:', err);
-      setError('Error loading results. Please try again.');
-      setResults({ 
-        avgLowestSGP40: '0.00', 
-        avgHighestMQ2: '0.00', 
-        avgTemp: '0.00', 
-        avgHumidity: '0.00', 
-        predictedBloodGlucose: '0.00',
-        chartData: [] 
-      });
-    }
-  };
-
-  // const loadSessionSummary = async () => {
-  //   try {
-  //     const subsessions = await firestoreAPI.getCollection(
-  //       `patients/${patientData.id}/sessions/${currentSessionId}/subsessions`
-  //     );
-
-  //     // Filter subsessions that have results
-  //     const validResults = subsessions.filter(s => s.avgTemp !== undefined);
-
-  //     if (validResults.length > 0) {
-  //       const avgTemp = validResults.reduce((a, b) => a + b.avgTemp, 0) / validResults.length;
-  //       const avgHumidity = validResults.reduce((a, b) => a + b.avgHumidity, 0) / validResults.length;
-  //       const avgLowestSGP40 = validResults.reduce((a, b) => a + b.avgLowestSGP40, 0) / validResults.length;
-  //       const avgHighestMQ2 = validResults.reduce((a, b) => a + b.avgHighestMQ2, 0) / validResults.length;
-
-  //       const sessionResultData = {
-  //         avgTemp: avgTemp.toFixed(2),
-  //         avgHumidity: avgHumidity.toFixed(2),
-  //         avgLowestSGP40: avgLowestSGP40.toFixed(2),
-  //         avgHighestMQ2: avgHighestMQ2.toFixed(2),
-  //         subsessionCount: validResults.length,
-  //         subsessions: validResults
-  //       };
-
-  //       setSessionSummary(sessionResultData);
-
-  //       // FETCH EXISTING SESSION DATA FIRST
-  //       const existingSession = await firestoreAPI.getDoc(
-  //         `patients/${patientData.id}/sessions/${currentSessionId}`
-  //       );
-
-  //       // MERGE EXISTING DATA WITH NEW RESULT FIELDS
-  //       await firestoreAPI.updateDoc(
-  //         `patients/${patientData.id}/sessions/${currentSessionId}`,
-  //         {
-  //           // Preserve existing session details
-  //           session_ID: existingSession?.session_ID || currentSessionId,
-  //           patientName: existingSession?.patientName || patientData.name,
-  //           patientId: existingSession?.patientId || patientData.id,
-  //           mealTime: existingSession?.mealTime,
-  //           alcoholConsumption: existingSession?.alcoholConsumption,
-  //           bloodGlucose: existingSession?.bloodGlucose,
-  //           sessionDuration: existingSession?.sessionDuration,
-  //           createdAt: existingSession?.createdAt,
-            
-  //           // Add/Update result fields
-  //           avgLowestSGP40: parseFloat(avgLowestSGP40.toFixed(2)),
-  //           avgHighestMQ2: parseFloat(avgHighestMQ2.toFixed(2)),
-  //           avgTemp: parseFloat(avgTemp.toFixed(2)),
-  //           avgHumidity: parseFloat(avgHumidity.toFixed(2)),
-  //           subsessionCount: validResults.length,
-  //           resultsTimestamp: new Date().toISOString(),
-  //           status: 'completed'
-  //         }
-  //       );
-
-  //       // *** SEND DISPLAY REQUEST TO ESP32 ***
-  //       const requestSent = await firestoreAPI.createSessionResultRequest(currentSessionId);
-        
-  //       if (requestSent) {
-  //         alert('✅ Session result sent to OLED display!\n\nCheck your ESP32:\n• OLED Screen\n• Serial Monitor');
-  //       } else {
-  //         alert('⚠️ Results saved, but failed to send to ESP32. Please check your connection.');
-  //       }
-  //     }
-
-  //     setShowSessionSummary(true);
-  //   } catch (err) {
-  //     console.error('Error loading session summary:', err);
-  //     alert('❌ Error loading session summary. Please try again.');
-  //   }
-  // };
-
-
   const loadSessionSummary = async () => {
     try {
       const subsessions = await firestoreAPI.getCollection(
@@ -2394,19 +2150,12 @@ function ResultsPage({ navigateTo, patientData, sessionData, currentSessionId })
         const avgHumidity = validResults.reduce((a, b) => a + b.avgHumidity, 0) / validResults.length;
         const avgLowestSGP40 = validResults.reduce((a, b) => a + b.avgLowestSGP40, 0) / validResults.length;
         const avgHighestMQ2 = validResults.reduce((a, b) => a + b.avgHighestMQ2, 0) / validResults.length;
-        
-        // *** CALCULATE AVERAGE ML PREDICTION ***
-        const avgPredictedGlucose = validResults
-          .filter(s => s.predictedBloodGlucose !== undefined)
-          .reduce((a, b) => a + b.predictedBloodGlucose, 0) / 
-          validResults.filter(s => s.predictedBloodGlucose !== undefined).length || 0;
 
         const sessionResultData = {
           avgTemp: avgTemp.toFixed(2),
           avgHumidity: avgHumidity.toFixed(2),
           avgLowestSGP40: avgLowestSGP40.toFixed(2),
           avgHighestMQ2: avgHighestMQ2.toFixed(2),
-          avgPredictedGlucose: avgPredictedGlucose.toFixed(2),
           subsessionCount: validResults.length,
           subsessions: validResults
         };
@@ -2437,7 +2186,6 @@ function ResultsPage({ navigateTo, patientData, sessionData, currentSessionId })
             avgHighestMQ2: parseFloat(avgHighestMQ2.toFixed(2)),
             avgTemp: parseFloat(avgTemp.toFixed(2)),
             avgHumidity: parseFloat(avgHumidity.toFixed(2)),
-            avgPredictedGlucose: parseFloat(avgPredictedGlucose.toFixed(2)),
             subsessionCount: validResults.length,
             resultsTimestamp: new Date().toISOString(),
             status: 'completed'
@@ -2460,7 +2208,6 @@ function ResultsPage({ navigateTo, patientData, sessionData, currentSessionId })
       alert('❌ Error loading session summary. Please try again.');
     }
   };
-
 
   const handleRetakeSubsession = async () => {
     const subsessions = await firestoreAPI.getCollection(
@@ -2587,68 +2334,24 @@ const downloadCompleteSessionExcel = async () => {
           </p>
         </div>
 
-        <div className="grid md:grid-cols-5 gap-6 mb-8">
-            <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl shadow-lg p-6 text-white">
-              <p className="text-blue-100 text-sm mb-2">Body Temperature</p>
-              <p className="text-3xl font-bold">{results.avgTemp}°C</p>
-            </div>
-            <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl shadow-lg p-6 text-white">
-              <p className="text-green-100 text-sm mb-2">Body Humidity</p>
-              <p className="text-3xl font-bold">{results.avgHumidity}%</p>
-            </div>
-            <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl shadow-lg p-6 text-white">
-              <p className="text-purple-100 text-sm mb-2">SENSOR_1</p>
-              <p className="text-3xl font-bold">{results.avgLowestSGP40}</p>
-            </div>
-            <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl shadow-lg p-6 text-white">
-              <p className="text-orange-100 text-sm mb-2">SENSOR_2</p>
-              <p className="text-3xl font-bold">{results.avgHighestMQ2}</p>
-            </div>
-            
-            {/* *** NEW ML PREDICTION CARD *** */}
-            <div className="bg-gradient-to-br from-red-500 to-pink-600 rounded-xl shadow-lg p-6 text-white">
-              <p className="text-red-100 text-sm mb-2">🤖 ML Predicted Glucose</p>
-              <p className="text-3xl font-bold">{results.predictedBloodGlucose}</p>
-              <p className="text-red-100 text-xs mt-1">mg/dL</p>
-            </div>
+        <div className="grid md:grid-cols-4 gap-6 mb-8">
+          <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl shadow-lg p-6 text-white">
+            <p className="text-blue-100 text-sm mb-2">Body Temperature</p>
+            <p className="text-3xl font-bold">{results.avgTemp}°C</p>
           </div>
-
-          {/* *** ML MODEL DETAILS CARD (NEW) *** */}
-          {results.mlModelData && (
-            <div className="bg-gradient-to-br from-pink-50 to-red-50 border-2 border-red-200 rounded-xl shadow-lg p-6 mb-8">
-              <div className="flex items-center mb-4">
-                <div className="p-2 bg-red-100 rounded-lg mr-3">
-                  <TrendingUp className="w-6 h-6 text-red-600" />
-                </div>
-                <div>
-                  <h3 className="text-xl font-bold text-gray-800">ML Model Analysis</h3>
-                  <p className="text-sm text-gray-600">Polynomial Regression Prediction</p>
-                </div>
-              </div>
-
-              <div className="grid md:grid-cols-3 gap-4 mb-4">
-                <div className="bg-white p-4 rounded-lg">
-                  <p className="text-xs text-gray-600 mb-1">Top 5 SENSOR_1 Average</p>
-                  <p className="text-2xl font-bold text-red-600">{results.mlModelData.max5Avg}</p>
-                </div>
-                <div className="bg-white p-4 rounded-lg">
-                  <p className="text-xs text-gray-600 mb-1">Bottom 5 SENSOR_1 Average</p>
-                  <p className="text-2xl font-bold text-blue-600">{results.mlModelData.min5Avg}</p>
-                </div>
-                <div className="bg-white p-4 rounded-lg">
-                  <p className="text-xs text-gray-600 mb-1">SENSOR_1 Difference</p>
-                  <p className="text-2xl font-bold text-purple-600">{results.mlModelData.sgp40Difference}</p>
-                </div>
-              </div>
-
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                <p className="text-xs text-yellow-800">
-                  <strong>⚠️ Medical Disclaimer:</strong> This is an AI prediction for research purposes only. 
-                  Always consult healthcare professionals for medical diagnosis.
-                </p>
-              </div>
-            </div>
-          )}
+          <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl shadow-lg p-6 text-white">
+            <p className="text-green-100 text-sm mb-2">Body Humidity</p>
+            <p className="text-3xl font-bold">{results.avgHumidity}%</p>
+          </div>
+          <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl shadow-lg p-6 text-white">
+            <p className="text-purple-100 text-sm mb-2">SENSOR_1</p>
+            <p className="text-3xl font-bold">{results.avgLowestSGP40}</p>
+          </div>
+          <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl shadow-lg p-6 text-white">
+            <p className="text-orange-100 text-sm mb-2">SENSOR_2</p>
+            <p className="text-3xl font-bold">{results.avgHighestMQ2}</p>
+          </div>
+        </div>
 
         {/* CONTINUOUS LINE GRAPHS */}
         <div className="grid md:grid-cols-2 gap-6 mb-8">
@@ -2858,7 +2561,7 @@ const downloadCompleteSessionExcel = async () => {
               </button>
             </div>
 
-            {/* <div className="grid md:grid-cols-4 gap-6 mb-6">
+            <div className="grid md:grid-cols-4 gap-6 mb-6">
               <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
                 <p className="text-sm text-blue-600 mb-1">Body Temperature</p>
                 <p className="text-2xl font-bold text-blue-700">{sessionSummary.avgTemp}°C</p>
@@ -2875,34 +2578,7 @@ const downloadCompleteSessionExcel = async () => {
                 <p className="text-sm text-orange-600 mb-1">SENSOR_2</p>
                 <p className="text-2xl font-bold text-orange-700">{sessionSummary.avgHighestMQ2}</p>
               </div>
-            </div> */}
-
-              <div className="grid md:grid-cols-5 gap-6 mb-6">
-                <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                  <p className="text-sm text-blue-600 mb-1">Body Temperature</p>
-                  <p className="text-2xl font-bold text-blue-700">{sessionSummary.avgTemp}°C</p>
-                </div>
-                <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-                  <p className="text-sm text-green-600 mb-1">Body Humidity</p>
-                  <p className="text-2xl font-bold text-green-700">{sessionSummary.avgHumidity}%</p>
-                </div>
-                <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
-                  <p className="text-sm text-purple-600 mb-1">SENSOR_1</p>
-                  <p className="text-2xl font-bold text-purple-700">{sessionSummary.avgLowestSGP40}</p>
-                </div>
-                <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
-                  <p className="text-sm text-orange-600 mb-1">SENSOR_2</p>
-                  <p className="text-2xl font-bold text-orange-700">{sessionSummary.avgHighestMQ2}</p>
-                </div>
-                
-                {/* *** NEW AVERAGE ML PREDICTION *** */}
-                <div className="bg-red-50 p-4 rounded-lg border border-red-200">
-                  <p className="text-sm text-red-600 mb-1">🤖 Avg ML Glucose</p>
-                  <p className="text-2xl font-bold text-red-700">{sessionSummary.avgPredictedGlucose}</p>
-                  <p className="text-xs text-red-600 mt-1">mg/dL (avg)</p>
-                </div>
-              </div>
-            
+            </div>
 
             <div className="mb-4">
               <p className="text-gray-600">Total Subsessions: {sessionSummary.subsessionCount}</p>
@@ -2910,7 +2586,7 @@ const downloadCompleteSessionExcel = async () => {
 
             <div className="space-y-3">
               <h3 className="font-semibold text-gray-800">Subsession Breakdown:</h3>
-              {/* {sessionSummary.subsessions.map((sub, idx) => (
+              {sessionSummary.subsessions.map((sub, idx) => (
                 <div key={idx} className="bg-gray-50 p-4 rounded-lg">
                   <p className="font-semibold text-gray-800 mb-2">{sub._id}</p>
                   <div className="grid grid-cols-4 gap-4 text-sm">
@@ -2918,38 +2594,6 @@ const downloadCompleteSessionExcel = async () => {
                     <div><p className="text-gray-600">Humidity:</p><p className="font-semibold">{sub.avgHumidity}%</p></div>
                     <div><p className="text-gray-600">Sensor 1:</p><p className="font-semibold">{sub.avgLowestSGP40}</p></div>
                     <div><p className="text-gray-600">Sensor 2:</p><p className="font-semibold">{sub.avgHighestMQ2}</p></div>
-                  </div>
-                </div>
-              ))} */}
-
-              {sessionSummary.subsessions.map((sub, idx) => (
-                <div key={idx} className="bg-gray-50 p-4 rounded-lg">
-                  <p className="font-semibold text-gray-800 mb-2">{sub._id}</p>
-                  <div className="grid grid-cols-5 gap-4 text-sm">
-                    <div>
-                      <p className="text-gray-600">Temp:</p>
-                      <p className="font-semibold">{sub.avgTemp}°C</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-600">Humidity:</p>
-                      <p className="font-semibold">{sub.avgHumidity}%</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-600">Sensor 1:</p>
-                      <p className="font-semibold">{sub.avgLowestSGP40}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-600">Sensor 2:</p>
-                      <p className="font-semibold">{sub.avgHighestMQ2}</p>
-                    </div>
-                    
-                    {/* *** NEW ML PREDICTION COLUMN *** */}
-                    <div>
-                      <p className="text-gray-600">🤖 ML Glucose:</p>
-                      <p className="font-semibold text-red-600">
-                        {sub.predictedBloodGlucose ? sub.predictedBloodGlucose.toFixed(2) : 'N/A'} mg/dL
-                      </p>
-                    </div>
                   </div>
                 </div>
               ))}
