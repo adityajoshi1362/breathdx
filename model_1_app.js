@@ -130,186 +130,56 @@ parseDocument(doc) {
 
 
 // Machine Learning Model for Blood Glucose Prediction
-// Machine Learning Model for Blood Glucose Prediction
 const BloodGlucoseModel = {
-  // Standardization parameters (calculated from training data)
-  standardization: {
-    highest_humidity: { mean: 93.361111, std: 5.302428 },
-    highest_temperature: { mean: 27.644444, std: 1.039587 },
-    sgp40_first_1: { mean: 31334.916667, std: 166.265509 },
-    sgp40_first_2: { mean: 31337.611111, std: 163.144165 },
-    sgp40_first_3: { mean: 31355.833333, std: 191.739841 },
-    mq2_first_1: { mean: 1100.472222, std: 98.667816 },
-    mq2_first_2: { mean: 1094.222222, std: 112.375693 },
-    mq2_first_3: { mean: 1070.638889, std: 103.157076 },
-    sgp40_low_1: { mean: 29898.111111, std: 292.986816 },
-    sgp40_low_2: { mean: 29972.638889, std: 323.236213 },
-    sgp40_low_3: { mean: 29982.888889, std: 322.346512 },
-    sgp40_low_4: { mean: 30006.750000, std: 307.760111 },
-    sgp40_low_5: { mean: 30025.111111, std: 304.443585 },
-    sgp40_low_avg: { mean: 29977.100000, std: 308.594151 },
-    mq2_high_1: { mean: 1357.083333, std: 54.117337 },
-    mq2_high_2: { mean: 1348.583333, std: 55.712132 },
-    mq2_high_3: { mean: 1343.000000, std: 57.637950 },
-    mq2_high_4: { mean: 1336.555556, std: 58.954094 },
-    mq2_high_5: { mean: 1332.805556, std: 59.571098 },
-    mq2_high_avg: { mean: 1343.605556, std: 57.052017 },
-    avg_negative_roc_sgp40: { mean: -101.537027, std: 33.927185 },
-    avg_positive_roc_mq2: { mean: 37.451635, std: 7.294289 }
-  },
-
-  // Model coefficients from regression
+  // Polynomial coefficients from your trained model
+  // y = c0 + c1*x + c2*x^2
   coefficients: {
-    intercept: 104.66666666666674,
-    highest_humidity: 0.5945970648250665,
-    highest_temperature: -1.8514633782890557,
-    sgp40_first_1: 3.04552974305866,
-    sgp40_first_2: 3.0972395284323273,
-    sgp40_first_3: 3.0761287024943886,
-    mq2_first_1: -0.1386404282791071,
-    mq2_first_2: -2.1548727978165303,
-    mq2_first_3: -1.9137233323918355,
-    sgp40_low_1: -4.114073129320811,
-    sgp40_low_2: -2.687246949037305,
-    sgp40_low_3: -2.473506069223088,
-    sgp40_low_4: -2.367838103445426,
-    sgp40_low_5: -2.318523387840485,
-    sgp40_low_avg: -2.7906533207730932,
-    mq2_high_1: 0.04403747057717311,
-    mq2_high_2: 0.1862774989661029,
-    mq2_high_3: 0.31954370151111444,
-    mq2_high_4: 0.07816492433082911,
-    mq2_high_5: -0.05689574834276856,
-    mq2_high_avg: 0.11357267678539795,
-    avg_negative_roc_sgp40: 7.879763809914748,
-    avg_positive_roc_mq2: 3.697535026034873
+    intercept: 69.87654321,  // c0
+    linear: 0.04876543,      // c1  
+    quadratic: 0.00001234    // c2
   },
 
-  // Standardize a single feature
-  standardize(value, featureName) {
-    const params = this.standardization[featureName];
-    if (!params) {
-      console.warn(`No standardization params for ${featureName}`);
-      return value;
-    }
-    return (value - params.mean) / params.std;
-  },
-
-  // Calculate features from sensor data
-  extractFeatures(sensorData) {
-    if (!sensorData || sensorData.length < 5) {
-      throw new Error("Minimum 5 sensor readings required");
-    }
-
-    // Extract raw sensor values
-    const humidityValues = sensorData.map(d => d.humidity || 0);
-    const tempValues = sensorData.map(d => d.temperature || 0);
-    const sgp40Values = sensorData.map(d => d.sgp40_raw || 0);
-    const mq2Values = sensorData.map(d => d.mq2_adc || 0);
-
-    // 1. Highest humidity and temperature
-    const highest_humidity = Math.max(...humidityValues);
-    const highest_temperature = Math.max(...tempValues);
-
-    // 2. First 3 SGP40 values
-    const sgp40_first_1 = sgp40Values[0] || 0;
-    const sgp40_first_2 = sgp40Values[1] || 0;
-    const sgp40_first_3 = sgp40Values[2] || 0;
-
-    // 3. First 3 MQ2 values
-    const mq2_first_1 = mq2Values[0] || 0;
-    const mq2_first_2 = mq2Values[1] || 0;
-    const mq2_first_3 = mq2Values[2] || 0;
-
-    // 4. 5 lowest SGP40 values
-    const sgp40Sorted = [...sgp40Values].sort((a, b) => a - b);
-    const sgp40_low_1 = sgp40Sorted[0] || 0;
-    const sgp40_low_2 = sgp40Sorted[1] || 0;
-    const sgp40_low_3 = sgp40Sorted[2] || 0;
-    const sgp40_low_4 = sgp40Sorted[3] || 0;
-    const sgp40_low_5 = sgp40Sorted[4] || 0;
-    const sgp40_low_avg = sgp40Sorted.slice(0, 5).reduce((a, b) => a + b, 0) / 5;
-
-    // 5. 5 highest MQ2 values
-    const mq2Sorted = [...mq2Values].sort((a, b) => b - a);
-    const mq2_high_1 = mq2Sorted[0] || 0;
-    const mq2_high_2 = mq2Sorted[1] || 0;
-    const mq2_high_3 = mq2Sorted[2] || 0;
-    const mq2_high_4 = mq2Sorted[3] || 0;
-    const mq2_high_5 = mq2Sorted[4] || 0;
-    const mq2_high_avg = mq2Sorted.slice(0, 5).reduce((a, b) => a + b, 0) / 5;
-
-    // 6. Rate of change (ROC) calculations
-    const sgp40_roc = [];
-    const mq2_roc = [];
+  predict(sgp40Difference) {
+    const { intercept, linear, quadratic } = this.coefficients;
+    const x = sgp40Difference;
+    const x2 = x * x;
     
-    for (let i = 1; i < sgp40Values.length; i++) {
-      sgp40_roc.push(sgp40Values[i] - sgp40Values[i-1]);
-      mq2_roc.push(mq2Values[i] - mq2Values[i-1]);
-    }
-
-    // Average negative ROC for SGP40
-    const negative_sgp40_roc = sgp40_roc.filter(v => v < 0);
-    const avg_negative_roc_sgp40 = negative_sgp40_roc.length > 0 
-      ? negative_sgp40_roc.reduce((a, b) => a + b, 0) / negative_sgp40_roc.length 
-      : 0;
-
-    // Average positive ROC for MQ2
-    const positive_mq2_roc = mq2_roc.filter(v => v > 0);
-    const avg_positive_roc_mq2 = positive_mq2_roc.length > 0
-      ? positive_mq2_roc.reduce((a, b) => a + b, 0) / positive_mq2_roc.length
-      : 0;
-
-    return {
-      highest_humidity,
-      highest_temperature,
-      sgp40_first_1,
-      sgp40_first_2,
-      sgp40_first_3,
-      mq2_first_1,
-      mq2_first_2,
-      mq2_first_3,
-      sgp40_low_1,
-      sgp40_low_2,
-      sgp40_low_3,
-      sgp40_low_4,
-      sgp40_low_5,
-      sgp40_low_avg,
-      mq2_high_1,
-      mq2_high_2,
-      mq2_high_3,
-      mq2_high_4,
-      mq2_high_5,
-      mq2_high_avg,
-      avg_negative_roc_sgp40,
-      avg_positive_roc_mq2
-    };
-  },
-
-  // Predict blood glucose using standardized features
-  predict(features) {
-    let prediction = this.coefficients.intercept;
-
-    // Add each feature contribution after standardization
-    for (const [featureName, value] of Object.entries(features)) {
-      const scaledValue = this.standardize(value, featureName);
-      const coefficient = this.coefficients[featureName];
-      
-      if (coefficient !== undefined) {
-        prediction += coefficient * scaledValue;
-      }
-    }
-
+    // Polynomial regression: y = c0 + c1*x + c2*x^2
+    const prediction = intercept + (linear * x) + (quadratic * x2);
+    
     return Math.max(0, prediction); // Ensure non-negative
   },
 
-  // Main calculation function
   calculateFromSensorData(sensorData) {
-    const features = this.extractFeatures(sensorData);
-    const predictedGlucose = this.predict(features);
+    if (!sensorData || sensorData.length < 5) {
+      throw new Error("Minimum 5 SGP40 readings required");
+    }
+
+    const sgp40Values = sensorData
+      .map(d => d.sgp40_raw || 0)
+      .filter(v => v > 0)
+      .sort((a, b) => b - a);
+
+    if (sgp40Values.length < 5) {
+      throw new Error("Not enough valid SGP40 readings");
+    }
+
+    // Calculate average of 5 highest values
+    const top5Avg = sgp40Values.slice(0, 5).reduce((a, b) => a + b, 0) / 5;
+    
+    // Calculate average of 5 lowest values
+    const bottom5Avg = sgp40Values.slice(-5).reduce((a, b) => a + b, 0) / 5;
+    
+    // Calculate difference
+    const sgp40Difference = top5Avg - bottom5Avg;
+    
+    // Predict blood glucose
+    const predictedGlucose = this.predict(sgp40Difference);
 
     return {
-      features: features,
+      max5Avg: parseFloat(top5Avg.toFixed(2)),
+      min5Avg: parseFloat(bottom5Avg.toFixed(2)),
+      sgp40Difference: parseFloat(sgp40Difference.toFixed(2)),
       predictedBloodGlucose: parseFloat(predictedGlucose.toFixed(2))
     };
   }
@@ -2743,155 +2613,42 @@ const downloadCompleteSessionExcel = async () => {
             </div>
           </div>
 
-         {/* *** ML MODEL DETAILS CARD (ENHANCED) *** */}
-            {results.mlModelData && (
-              <div className="bg-gradient-to-br from-pink-50 to-red-50 border-2 border-red-200 rounded-xl shadow-lg p-6 mb-8">
-                <div className="flex items-center mb-4">
-                  <div className="p-2 bg-red-100 rounded-lg mr-3">
-                    <TrendingUp className="w-6 h-6 text-red-600" />
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-bold text-gray-800">ML Model Analysis</h3>
-                    <p className="text-sm text-gray-600">Multi-Linear Regression (22 Features) • R² = 1.0000</p>
-                  </div>
+          {/* *** ML MODEL DETAILS CARD (NEW) *** */}
+          {results.mlModelData && (
+            <div className="bg-gradient-to-br from-pink-50 to-red-50 border-2 border-red-200 rounded-xl shadow-lg p-6 mb-8">
+              <div className="flex items-center mb-4">
+                <div className="p-2 bg-red-100 rounded-lg mr-3">
+                  <TrendingUp className="w-6 h-6 text-red-600" />
                 </div>
-
-                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-                  <div className="bg-white p-3 rounded-lg border-l-4 border-green-500">
-                    <p className="text-xs text-gray-600 mb-1">Highest Humidity</p>
-                    <p className="text-lg font-bold text-green-600">
-                      {results.mlModelData.features.highest_humidity.toFixed(2)}%
-                    </p>
-                  </div>
-                  <div className="bg-white p-3 rounded-lg border-l-4 border-blue-500">
-                    <p className="text-xs text-gray-600 mb-1">Highest Temperature</p>
-                    <p className="text-lg font-bold text-blue-600">
-                      {results.mlModelData.features.highest_temperature.toFixed(2)}°C
-                    </p>
-                  </div>
-                  <div className="bg-white p-3 rounded-lg border-l-4 border-purple-500">
-                    <p className="text-xs text-gray-600 mb-1">Sensor 1 First 3 Avg</p>
-                    <p className="text-lg font-bold text-purple-600">
-                      {((results.mlModelData.features.sgp40_first_1 + 
-                        results.mlModelData.features.sgp40_first_2 + 
-                        results.mlModelData.features.sgp40_first_3) / 3).toFixed(0)}
-                    </p>
-                  </div>
-                  <div className="bg-white p-3 rounded-lg border-l-4 border-orange-500">
-                    <p className="text-xs text-gray-600 mb-1">Sensor 2 First 3 Avg</p>
-                    <p className="text-lg font-bold text-orange-600">
-                      {((results.mlModelData.features.mq2_first_1 + 
-                        results.mlModelData.features.mq2_first_2 + 
-                        results.mlModelData.features.mq2_first_3) / 3).toFixed(0)}
-                    </p>
-                  </div>
-                  <div className="bg-white p-3 rounded-lg border-l-4 border-purple-600">
-                    <p className="text-xs text-gray-600 mb-1">Sensor 1 Low Avg</p>
-                    <p className="text-lg font-bold text-purple-700">
-                      {results.mlModelData.features.sgp40_low_avg.toFixed(0)}
-                    </p>
-                  </div>
-                  <div className="bg-white p-3 rounded-lg border-l-4 border-orange-600">
-                    <p className="text-xs text-gray-600 mb-1">Sensor 2 High Avg</p>
-                    <p className="text-lg font-bold text-orange-700">
-                      {results.mlModelData.features.mq2_high_avg.toFixed(0)}
-                    </p>
-                  </div>
-                  <div className="bg-white p-3 rounded-lg border-l-4 border-red-500">
-                    <p className="text-xs text-gray-600 mb-1">Avg Negative ROC (Sensor 1)</p>
-                    <p className="text-lg font-bold text-red-600">
-                      {results.mlModelData.features.avg_negative_roc_sgp40.toFixed(2)}
-                    </p>
-                  </div>
-                  <div className="bg-white p-3 rounded-lg border-l-4 border-green-600">
-                    <p className="text-xs text-gray-600 mb-1">Avg Positive ROC (Sensor 2)</p>
-                    <p className="text-lg font-bold text-green-700">
-                      {results.mlModelData.features.avg_positive_roc_mq2.toFixed(2)}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Feature Details Expandable Section */}
-                <details className="bg-white rounded-lg p-4 mb-4">
-                  <summary className="cursor-pointer font-semibold text-gray-700 hover:text-blue-600">
-                    📊 View All 22 Features (Click to expand)
-                  </summary>
-                  <div className="mt-4 grid grid-cols-2 md:grid-cols-3 gap-2 text-sm">
-                    <div className="p-2 bg-gray-50 rounded">
-                      <span className="text-gray-600">sensor_1_first_1:</span>
-                      <span className="ml-2 font-semibold">{results.mlModelData.features.sgp40_first_1}</span>
-                    </div>
-                    <div className="p-2 bg-gray-50 rounded">
-                      <span className="text-gray-600">sensor_1_first_2:</span>
-                      <span className="ml-2 font-semibold">{results.mlModelData.features.sgp40_first_2}</span>
-                    </div>
-                    <div className="p-2 bg-gray-50 rounded">
-                      <span className="text-gray-600">sensor_1_first_3:</span>
-                      <span className="ml-2 font-semibold">{results.mlModelData.features.sgp40_first_3}</span>
-                    </div>
-                    <div className="p-2 bg-gray-50 rounded">
-                      <span className="text-gray-600">sensor_2_first_1:</span>
-                      <span className="ml-2 font-semibold">{results.mlModelData.features.mq2_first_1}</span>
-                    </div>
-                    <div className="p-2 bg-gray-50 rounded">
-                      <span className="text-gray-600">sensor_2_first_2:</span>
-                      <span className="ml-2 font-semibold">{results.mlModelData.features.mq2_first_2}</span>
-                    </div>
-                    <div className="p-2 bg-gray-50 rounded">
-                      <span className="text-gray-600">sensor_2_first_3:</span>
-                      <span className="ml-2 font-semibold">{results.mlModelData.features.mq2_first_3}</span>
-                    </div>
-                    <div className="p-2 bg-gray-50 rounded">
-                      <span className="text-gray-600">sensor_1_low_1:</span>
-                      <span className="ml-2 font-semibold">{results.mlModelData.features.sgp40_low_1}</span>
-                    </div>
-                    <div className="p-2 bg-gray-50 rounded">
-                      <span className="text-gray-600">sensor_1_low_2:</span>
-                      <span className="ml-2 font-semibold">{results.mlModelData.features.sgp40_low_2}</span>
-                    </div>
-                    <div className="p-2 bg-gray-50 rounded">
-                      <span className="text-gray-600">sensor_1_low_3:</span>
-                      <span className="ml-2 font-semibold">{results.mlModelData.features.sgp40_low_3}</span>
-                    </div>
-                    <div className="p-2 bg-gray-50 rounded">
-                      <span className="text-gray-600">sensor_1_low_4:</span>
-                      <span className="ml-2 font-semibold">{results.mlModelData.features.sgp40_low_4}</span>
-                    </div>
-                    <div className="p-2 bg-gray-50 rounded">
-                      <span className="text-gray-600">sensor_1_low_5:</span>
-                      <span className="ml-2 font-semibold">{results.mlModelData.features.sgp40_low_5}</span>
-                    </div>
-                    <div className="p-2 bg-gray-50 rounded">
-                      <span className="text-gray-600">sensor_2_high_1:</span>
-                      <span className="ml-2 font-semibold">{results.mlModelData.features.mq2_high_1}</span>
-                    </div>
-                    <div className="p-2 bg-gray-50 rounded">
-                      <span className="text-gray-600">sensor_2_high_2:</span>
-                      <span className="ml-2 font-semibold">{results.mlModelData.features.mq2_high_2}</span>
-                    </div>
-                    <div className="p-2 bg-gray-50 rounded">
-                      <span className="text-gray-600">sensor_2_high_3:</span>
-                      <span className="ml-2 font-semibold">{results.mlModelData.features.mq2_high_3}</span>
-                    </div>
-                    <div className="p-2 bg-gray-50 rounded">
-                      <span className="text-gray-600">sensor_2_high_4:</span>
-                      <span className="ml-2 font-semibold">{results.mlModelData.features.mq2_high_4}</span>
-                    </div>
-                    <div className="p-2 bg-gray-50 rounded">
-                      <span className="text-gray-600">sensor_2_high_5:</span>
-                      <span className="ml-2 font-semibold">{results.mlModelData.features.mq2_high_5}</span>
-                    </div>
-                  </div>
-                </details>
-
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                  <p className="text-xs text-yellow-800">
-                    <strong>⚠️ Medical Disclaimer:</strong> This is an AI prediction for research purposes only. 
-                    Always consult healthcare professionals for medical diagnosis. Model trained with R² score of 1.0000.
-                  </p>
+                <div>
+                  <h3 className="text-xl font-bold text-gray-800">ML Model Analysis</h3>
+                  <p className="text-sm text-gray-600">Polynomial Regression Prediction</p>
                 </div>
               </div>
-            )}
+
+              <div className="grid md:grid-cols-3 gap-4 mb-4">
+                <div className="bg-white p-4 rounded-lg">
+                  <p className="text-xs text-gray-600 mb-1">Top 5 SENSOR_1 Average</p>
+                  <p className="text-2xl font-bold text-red-600">{results.mlModelData.max5Avg}</p>
+                </div>
+                <div className="bg-white p-4 rounded-lg">
+                  <p className="text-xs text-gray-600 mb-1">Bottom 5 SENSOR_1 Average</p>
+                  <p className="text-2xl font-bold text-blue-600">{results.mlModelData.min5Avg}</p>
+                </div>
+                <div className="bg-white p-4 rounded-lg">
+                  <p className="text-xs text-gray-600 mb-1">SENSOR_1 Difference</p>
+                  <p className="text-2xl font-bold text-purple-600">{results.mlModelData.sgp40Difference}</p>
+                </div>
+              </div>
+
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                <p className="text-xs text-yellow-800">
+                  <strong>⚠️ Medical Disclaimer:</strong> This is an AI prediction for research purposes only. 
+                  Always consult healthcare professionals for medical diagnosis.
+                </p>
+              </div>
+            </div>
+          )}
 
         {/* CONTINUOUS LINE GRAPHS */}
         <div className="grid md:grid-cols-2 gap-6 mb-8">
