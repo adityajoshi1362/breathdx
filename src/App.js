@@ -2,6 +2,54 @@ import React, { useState, useEffect } from 'react';
 import { Activity, User, Users, TrendingUp, Clock, BarChart3, AlertCircle, Download, History, FileSpreadsheet, XCircle, ArrowLeft } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
+
+
+// Helper function to format timestamps
+const formatTimestamp = (timestamp) => {
+  if (!timestamp) return 'N/A';
+  
+  try {
+    let date;
+    
+    // Handle Firestore timestamp object
+    if (timestamp._seconds) {
+      date = new Date(timestamp._seconds * 1000);
+    } 
+    // Handle ISO string
+    else if (typeof timestamp === 'string') {
+      date = new Date(timestamp);
+    } 
+    // Handle milliseconds
+    else if (typeof timestamp === 'number') {
+      date = new Date(timestamp);
+    }
+    // Handle Date object
+    else if (timestamp instanceof Date) {
+      date = timestamp;
+    }
+    else {
+      return 'Invalid Date';
+    }
+    
+    // Check if date is valid
+    if (isNaN(date.getTime())) {
+      return 'Invalid Date';
+    }
+    
+    return date.toLocaleString('en-IN', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+  } catch (error) {
+    console.error('Error formatting timestamp:', error);
+    return 'Invalid Date';
+  }
+};
+
 // Firebase Configuration
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyDo--_nMOGCwgN3M6dZUCL3S9P8mgK9Em4",
@@ -796,7 +844,6 @@ const downloadSessionExcel = async (sessionId, subsessionId) => {
   const subsession = sessionDetails.find(s => s._id === subsessionId);
   if (!subsession || !subsession.sensorData) return;
 
-  // Get session details
   const sessionDoc = await firestoreAPI.getDoc(`patients/${patientData.id}/sessions/${sessionId}`);
 
   const wb = XLSX.utils.book_new();
@@ -813,7 +860,10 @@ const downloadSessionExcel = async (sessionId, subsessionId) => {
     ['Alcohol Consumption', sessionDoc?.alcoholConsumption || 'N/A'],
     ['Blood Glucose Level (mg/dL)', sessionDoc?.bloodGlucose || 'N/A'],
     ['Session Duration (Time of Day)', sessionDoc?.sessionDuration || 'N/A'],
-    ['Session Timestamp', sessionDoc?.timestamp ? new Date(sessionDoc.timestamp).toLocaleString() : 'N/A']
+    ['Beverage Consumed (last 30 min)', sessionDoc?.beverage || 'N/A'],
+    ['Tobacco Use (last 30 min)', sessionDoc?.tobacco || 'N/A'],
+    ['Notes', sessionDoc?.notes || 'None'],
+    ['Session Timestamp', formatTimestamp(sessionDoc?.createdAt || sessionDoc?.timestamp)]
   ];
 
   const ws1 = XLSX.utils.aoa_to_sheet(sessionInfo);
@@ -821,26 +871,13 @@ const downloadSessionExcel = async (sessionId, subsessionId) => {
 
   // Sheet 2: Sensor Data
   const ws2 = XLSX.utils.json_to_sheet(
-    subsession.sensorData.map(data => {
-      let timestamp = 'N/A';
-      if (data.timestamp) {
-        if (data.timestamp._seconds) {
-          timestamp = new Date(data.timestamp._seconds * 1000).toLocaleString();
-        } else if (typeof data.timestamp === 'string') {
-          timestamp = new Date(data.timestamp).toLocaleString();
-        } else if (typeof data.timestamp === 'number') {
-          timestamp = new Date(data.timestamp).toLocaleString();
-        }
-      }
-      
-      return {
-        Temperature: data.temperature,
-        Humidity: data.humidity,
-        SGP40: data.sgp40_raw,
-        MQ2: data.mq2_adc,
-        Timestamp: timestamp
-      };
-    })
+    subsession.sensorData.map(data => ({
+      Temperature: data.temperature,
+      Humidity: data.humidity,
+      SGP40: data.sgp40_raw,
+      MQ2: data.mq2_adc,
+      Timestamp: formatTimestamp(data.timestamp)
+    }))
   );
   XLSX.utils.book_append_sheet(wb, ws2, 'Sensor Data');
 
@@ -854,7 +891,6 @@ const downloadSessionCSV = async (sessionId, subsessionId) => {
   const subsession = sessionDetails.find(s => s._id === subsessionId);
   if (!subsession || !subsession.sensorData) return;
 
-  // Get session details
   const sessionDoc = await firestoreAPI.getDoc(`patients/${patientData.id}/sessions/${sessionId}`);
 
   let csvContent = "=== SESSION INFORMATION ===\n";
@@ -868,23 +904,16 @@ const downloadSessionCSV = async (sessionId, subsessionId) => {
   csvContent += "Alcohol Consumption," + (sessionDoc?.alcoholConsumption || 'N/A') + "\n";
   csvContent += "Blood Glucose Level (mg/dL)," + (sessionDoc?.bloodGlucose || 'N/A') + "\n";
   csvContent += "Session Duration (Time of Day)," + (sessionDoc?.sessionDuration || 'N/A') + "\n";
-  csvContent += "Session Timestamp," + (sessionDoc?.timestamp ? new Date(sessionDoc.timestamp).toLocaleString() : 'N/A') + "\n";
+  csvContent += "Beverage Consumed (last 30 min)," + (sessionDoc?.beverage || 'N/A') + "\n";
+  csvContent += "Tobacco Use (last 30 min)," + (sessionDoc?.tobacco || 'N/A') + "\n";
+  csvContent += "Notes," + (sessionDoc?.notes || 'None').replace(/,/g, ';') + "\n";
+  csvContent += "Session Timestamp," + formatTimestamp(sessionDoc?.createdAt || sessionDoc?.timestamp) + "\n";
   csvContent += "\n";
   csvContent += "=== SENSOR DATA ===\n";
   csvContent += "Temperature,Humidity,SGP40,MQ2,Timestamp\n";
   
   subsession.sensorData.forEach(data => {
-    let timestamp = 'N/A';
-    if (data.timestamp) {
-      if (data.timestamp._seconds) {
-        timestamp = new Date(data.timestamp._seconds * 1000).toLocaleString();
-      } else if (typeof data.timestamp === 'string') {
-        timestamp = new Date(data.timestamp).toLocaleString();
-      } else if (typeof data.timestamp === 'number') {
-        timestamp = new Date(data.timestamp).toLocaleString();
-      }
-    }
-    csvContent += `${data.temperature},${data.humidity},${data.sgp40_raw},${data.mq2_adc},"${timestamp}"\n`;
+    csvContent += `${data.temperature},${data.humidity},${data.sgp40_raw},${data.mq2_adc},"${formatTimestamp(data.timestamp)}"\n`;
   });
 
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -1003,8 +1032,8 @@ const downloadSessionCSV = async (sessionId, subsessionId) => {
                       <div className="text-left">
                         <p className="font-semibold text-gray-800">{session._id}</p>
                         <p className="text-sm text-gray-600">
-                          {new Date(session.timestamp).toLocaleString()} • {session.subsessionCount} subsession(s)
-                        </p>
+                        {formatTimestamp(session.createdAt || session.timestamp)} • {session.subsessionCount} subsession(s)
+                      </p>
                       </div>
                     </div>
                     <div className="text-blue-600">
@@ -1142,78 +1171,26 @@ const downloadSessionCSV = async (sessionId, subsessionId) => {
   );
 }
 
-
-// Session Details Page
+// Session Details Page - UPDATED with beverage, tobacco, and notes
 function SessionDetailsPage({ navigateTo, patientData }) {
   const [formData, setFormData] = useState({
     mealTime: '',
     alcoholConsumption: '',
     bloodGlucose: '',
-    sessionDuration: ''
+    sessionDuration: '',
+    beverage: '',
+    tobacco: '',
+    notes: ''
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // const handleSubmit = async (e) => {
-  //   e.preventDefault();
-    
-  //   if (!formData.mealTime || !formData.alcoholConsumption || !formData.bloodGlucose || !formData.sessionDuration) {
-  //     setError('Please fill in all fields');
-  //     return;
-  //   }
-
-  //   setLoading(true);
-  //   setError('');
-
-  //   try {
-  //     const sessions = await firestoreAPI.getCollection(`patients/${patientData.id}/sessions`);
-  //     const newSessionNumber = sessions.length + 1;
-  //     const sessionId = `sessionID_${String(newSessionNumber).padStart(3, '0')}`;
-      
-  //     // Create session with details
-  //     await firestoreAPI.setDoc(`patients/${patientData.id}/sessions/${sessionId}`, {
-  //       session_ID: sessionId,
-  //       timestamp: new Date().toISOString(),
-  //       status: 'active',
-  //       notes: '',
-  //       patientName: patientData.name,
-  //       patientId: patientData.id,
-  //       mealTime: formData.mealTime,
-  //       alcoholConsumption: formData.alcoholConsumption,
-  //       bloodGlucose: parseFloat(formData.bloodGlucose),
-  //       sessionDuration: formData.sessionDuration
-  //     });
-
-  //     // Create first subsession
-  //     const subsessionId = `subsession_001`;
-  //     await firestoreAPI.setDoc(
-  //       `patients/${patientData.id}/sessions/${sessionId}/subsessions/${subsessionId}`,
-  //       {
-  //         subsession_ID: subsessionId,
-  //         timestamp: new Date().toISOString(),
-  //         status: 'in_progress'
-  //       }
-  //     );
-
-  //     navigateTo('diagnosis', {
-  //       patient: patientData,
-  //       session: { id: subsessionId, number: 1 },
-  //       currentSessionId: sessionId
-  //     });
-  //   } catch (err) {
-  //     setError('Error creating session. Please try again.');
-  //     console.error(err);
-  //   } finally {
-  //     setLoading(false);
-  //   }
-  // };
-
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!formData.mealTime || !formData.alcoholConsumption || !formData.bloodGlucose || !formData.sessionDuration) {
-      setError('Please fill in all fields');
+    if (!formData.mealTime || !formData.alcoholConsumption || !formData.bloodGlucose || 
+        !formData.sessionDuration || !formData.beverage || !formData.tobacco) {
+      setError('Please fill in all required fields');
       return;
     }
 
@@ -1225,7 +1202,7 @@ function SessionDetailsPage({ navigateTo, patientData }) {
       const newSessionNumber = sessions.length + 1;
       const sessionId = `sessionID_${String(newSessionNumber).padStart(3, '0')}`;
       
-      // Create session with details - NO status or timestamp here
+      // Create session with ALL details including beverage, tobacco, and notes
       await firestoreAPI.setDoc(`patients/${patientData.id}/sessions/${sessionId}`, {
         session_ID: sessionId,
         patientName: patientData.name,
@@ -1234,7 +1211,10 @@ function SessionDetailsPage({ navigateTo, patientData }) {
         alcoholConsumption: formData.alcoholConsumption,
         bloodGlucose: parseFloat(formData.bloodGlucose),
         sessionDuration: formData.sessionDuration,
-        createdAt: new Date().toISOString() // Use createdAt instead of timestamp
+        beverage: formData.beverage,
+        tobacco: formData.tobacco,
+        notes: formData.notes,
+        createdAt: new Date().toISOString()
       });
 
       // Create first subsession
@@ -1260,6 +1240,7 @@ function SessionDetailsPage({ navigateTo, patientData }) {
       setLoading(false);
     }
   };
+
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
       <div className="max-w-2xl w-full">
@@ -1277,14 +1258,14 @@ function SessionDetailsPage({ navigateTo, patientData }) {
             </div>
             <div>
               <h2 className="text-2xl font-bold text-gray-800">Session Details</h2>
-              <p className="text-gray-600">Enter information before starting the session</p>
+              <p className="text-gray-600">Enter all information before starting the session</p>
             </div>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Khana Kitni Der Pehle Khaya (When did you eat?)
+                Khana Kitni Der Pehle Khaya (When did you eat?) *
               </label>
               <select
                 value={formData.mealTime}
@@ -1304,7 +1285,7 @@ function SessionDetailsPage({ navigateTo, patientData }) {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Alcohol Consumption
+                Alcohol Consumption *
               </label>
               <div className="flex gap-4">
                 <label className="flex items-center cursor-pointer">
@@ -1334,7 +1315,7 @@ function SessionDetailsPage({ navigateTo, patientData }) {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Blood Glucose Level (mg/dL)
+                Blood Glucose Level (mg/dL) *
               </label>
               <input
                 type="number"
@@ -1348,7 +1329,7 @@ function SessionDetailsPage({ navigateTo, patientData }) {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Session Duration (Time of Day)
+                Session Duration (Time of Day) *
               </label>
               <select
                 value={formData.sessionDuration}
@@ -1361,6 +1342,77 @@ function SessionDetailsPage({ navigateTo, patientData }) {
                 <option value="Evening">Evening (5 PM - 8 PM)</option>
                 <option value="Night">Night (8 PM - 6 AM)</option>
               </select>
+            </div>
+
+            {/* Divider */}
+            <div className="relative my-6">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-300"></div>
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="px-2 bg-white text-gray-500 font-semibold">Additional Information</span>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Have you consumed Tea, Coffee, or Soft Drink in the last 30 minutes? *
+              </label>
+              <select
+                value={formData.beverage}
+                onChange={(e) => setFormData({...formData, beverage: e.target.value})}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Select...</option>
+                <option value="None">None</option>
+                <option value="Tea">Tea</option>
+                <option value="Coffee">Coffee</option>
+                <option value="Soft Drink">Soft Drink</option>
+                <option value="Tea and Coffee">Tea and Coffee</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Have you smoked or taken tobacco in the last 30 minutes? *
+              </label>
+              <div className="flex gap-4">
+                <label className="flex items-center cursor-pointer">
+                  <input
+                    type="radio"
+                    name="tobacco"
+                    value="Yes"
+                    checked={formData.tobacco === 'Yes'}
+                    onChange={(e) => setFormData({...formData, tobacco: e.target.value})}
+                    className="mr-2 w-4 h-4 text-blue-600"
+                  />
+                  <span className="text-gray-700">Yes</span>
+                </label>
+                <label className="flex items-center cursor-pointer">
+                  <input
+                    type="radio"
+                    name="tobacco"
+                    value="No"
+                    checked={formData.tobacco === 'No'}
+                    onChange={(e) => setFormData({...formData, tobacco: e.target.value})}
+                    className="mr-2 w-4 h-4 text-blue-600"
+                  />
+                  <span className="text-gray-700">No</span>
+                </label>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Additional Notes (Optional)
+              </label>
+              <textarea
+                value={formData.notes}
+                onChange={(e) => setFormData({...formData, notes: e.target.value})}
+                placeholder="Any additional observations or notes..."
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 min-h-[100px]"
+              />
             </div>
 
             {error && (
@@ -1384,10 +1436,16 @@ function SessionDetailsPage({ navigateTo, patientData }) {
   );
 }
 // Diagnosis Page
+// Diagnosis Page - UPDATED with subsession details form
+// Diagnosis Page - SIMPLIFIED (no subsession form)
 function DiagnosisPage({ navigateTo, patientData, sessionData, currentSessionId }) {
   const [phase, setPhase] = useState('calibrating');
   const [countdown, setCountdown] = useState(6);
   const [stopping, setStopping] = useState(false);
+
+  useEffect(() => {
+    startDiagnosis();
+  }, []);
 
   const handleStop = async () => {
     if (stopping) return;
@@ -1416,83 +1474,71 @@ function DiagnosisPage({ navigateTo, patientData, sessionData, currentSessionId 
     }
   };
 
-  useEffect(() => {
-    const runDiagnosis = async () => {
-      setPhase('calibrating');
-      setCountdown(6);
-      
-      for (let i = 6; i > 0; i--) {
-        if (stopping) return;
-        setCountdown(i);
-          await firestoreAPI.setDoc('active_monitoring/current', {
-          patient_id: patientData.id,
-          session_id: currentSessionId,
-          subsession_id: sessionData.id,
-          monitoring: true,
-          timestamp: new Date().toISOString()
-        });
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-
-      // await firestoreAPI.setDoc('active_monitoring/current', {
-      //   patient_id: patientData.id,
-      //   session_id: currentSessionId,
-      //   subsession_id: sessionData.id,
-      //   monitoring: true,
-      //   timestamp: new Date().toISOString()
-      // });
-
-      setPhase('blowing');
-      setCountdown(10);
-
-      for (let i = 10; i > 0; i--) {
-        if (stopping) return;
-        setCountdown(i);
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-
-      setPhase('analyzing');
-      setCountdown(35);
-
-      for (let i = 35; i > 0; i--) {
-        if (stopping) return;
-        setCountdown(i);
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-
+  const startDiagnosis = async () => {
+    setPhase('calibrating');
+    setCountdown(6);
+    
+    for (let i = 6; i > 0; i--) {
+      if (stopping) return;
+      setCountdown(i);
       await firestoreAPI.setDoc('active_monitoring/current', {
         patient_id: patientData.id,
         session_id: currentSessionId,
         subsession_id: sessionData.id,
-        monitoring: false,
+        monitoring: true,
         timestamp: new Date().toISOString()
       });
-      
-      setPhase('processing');
-      setCountdown(5);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
 
-      for (let i = 5; i > 0; i--) {
-        if (stopping) return;
-        setCountdown(i);
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
+    setPhase('blowing');
+    setCountdown(10);
 
-      await firestoreAPI.deleteDoc('active_monitoring/current');
-      setPhase('complete');
-      
-      const sensorData = await firestoreAPI.getCollection(
-        `patients/${patientData.id}/sessions/${currentSessionId}/subsessions/${sessionData.id}/sensor_data`
-      );
+    for (let i = 10; i > 0; i--) {
+      if (stopping) return;
+      setCountdown(i);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
 
-      navigateTo('results', {
-        patient: patientData,
-        session: { ...sessionData, readings: sensorData },
-        currentSessionId: currentSessionId
-      });
-    };
+    setPhase('analyzing');
+    setCountdown(35);
 
-    runDiagnosis();
-  }, []);
+    for (let i = 35; i > 0; i--) {
+      if (stopping) return;
+      setCountdown(i);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+
+    await firestoreAPI.setDoc('active_monitoring/current', {
+      patient_id: patientData.id,
+      session_id: currentSessionId,
+      subsession_id: sessionData.id,
+      monitoring: false,
+      timestamp: new Date().toISOString()
+    });
+    
+    setPhase('processing');
+    setCountdown(5);
+
+    for (let i = 5; i > 0; i--) {
+      if (stopping) return;
+      setCountdown(i);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+
+    await firestoreAPI.deleteDoc('active_monitoring/current');
+    setPhase('complete');
+    
+    const sensorData = await firestoreAPI.getCollection(
+      `patients/${patientData.id}/sessions/${currentSessionId}/subsessions/${sessionData.id}/sensor_data`
+    );
+
+    navigateTo('results', {
+      patient: patientData,
+      session: { ...sessionData, readings: sensorData },
+      currentSessionId: currentSessionId
+    });
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
@@ -2552,7 +2598,7 @@ function ResultsPage({ navigateTo, patientData, sessionData, currentSessionId })
         await firestoreAPI.updateDoc(
           `patients/${patientData.id}/sessions/${currentSessionId}`,
           {
-            // Preserve existing session details
+            // Preserve ALL existing session details
             session_ID: existingSession?.session_ID || currentSessionId,
             patientName: existingSession?.patientName || patientData.name,
             patientId: existingSession?.patientId || patientData.id,
@@ -2560,6 +2606,9 @@ function ResultsPage({ navigateTo, patientData, sessionData, currentSessionId })
             alcoholConsumption: existingSession?.alcoholConsumption,
             bloodGlucose: existingSession?.bloodGlucose,
             sessionDuration: existingSession?.sessionDuration,
+            beverage: existingSession?.beverage,  // *** PRESERVE BEVERAGE ***
+            tobacco: existingSession?.tobacco,    // *** PRESERVE TOBACCO ***
+            notes: existingSession?.notes,        // *** PRESERVE NOTES ***
             createdAt: existingSession?.createdAt,
             
             // Add/Update result fields
@@ -2574,14 +2623,14 @@ function ResultsPage({ navigateTo, patientData, sessionData, currentSessionId })
           }
         );
 
-        // *** SEND DISPLAY REQUEST TO ESP32 ***
-        const requestSent = await firestoreAPI.createSessionResultRequest(currentSessionId);
+        // // *** SEND DISPLAY REQUEST TO ESP32 ***
+        // const requestSent = await firestoreAPI.createSessionResultRequest(currentSessionId);
         
-        if (requestSent) {
-          alert('✅ Session result sent to OLED display!\n\nCheck your ESP32:\n• OLED Screen\n• Serial Monitor');
-        } else {
-          alert('⚠️ Results saved, but failed to send to ESP32. Please check your connection.');
-        }
+        // if (requestSent) {
+        //   alert('✅ Session result sent to OLED display!\n\nCheck your ESP32:\n• OLED Screen\n• Serial Monitor');
+        // } else {
+        //   alert('⚠️ Results saved, but failed to send to ESP32. Please check your connection.');
+        // }
       }
 
       setShowSessionSummary(true);
@@ -2617,9 +2666,7 @@ function ResultsPage({ navigateTo, patientData, sessionData, currentSessionId })
 
 const downloadCompleteSessionExcel = async () => {
   try {
-    // Get session document with details
     const sessionDoc = await firestoreAPI.getDoc(`patients/${patientData.id}/sessions/${currentSessionId}`);
-    
     const subsessions = await firestoreAPI.getCollection(
       `patients/${patientData.id}/sessions/${currentSessionId}/subsessions`
     );
@@ -2637,7 +2684,10 @@ const downloadCompleteSessionExcel = async () => {
       ['Alcohol Consumption', sessionDoc?.alcoholConsumption || 'N/A'],
       ['Blood Glucose Level (mg/dL)', sessionDoc?.bloodGlucose || 'N/A'],
       ['Session Duration (Time of Day)', sessionDoc?.sessionDuration || 'N/A'],
-      ['Session Timestamp', sessionDoc?.timestamp ? new Date(sessionDoc.timestamp).toLocaleString() : 'N/A'],
+      ['Beverage Consumed (last 30 min)', sessionDoc?.beverage || 'N/A'],
+      ['Tobacco Use (last 30 min)', sessionDoc?.tobacco || 'N/A'],
+      ['Notes', sessionDoc?.notes || 'None'],
+      ['Session Timestamp', formatTimestamp(sessionDoc?.createdAt || sessionDoc?.timestamp)],
       [''],
       ['Total Subsessions', subsessions.length]
     ];
@@ -2645,36 +2695,30 @@ const downloadCompleteSessionExcel = async () => {
     const ws1 = XLSX.utils.aoa_to_sheet(sessionInfo);
     XLSX.utils.book_append_sheet(wb, ws1, 'Session Info');
 
-    // Remaining sheets: One for each subsession
+    // Sheet for each subsession
     for (const subsession of subsessions) {
       const sensorData = await firestoreAPI.getCollection(
         `patients/${patientData.id}/sessions/${currentSessionId}/subsessions/${subsession._id}/sensor_data`
       );
 
       if (sensorData.length > 0) {
-        const ws = XLSX.utils.json_to_sheet(
-          sensorData.map(data => {
-            let timestamp = 'N/A';
-            if (data.timestamp) {
-              if (data.timestamp._seconds) {
-                timestamp = new Date(data.timestamp._seconds * 1000).toLocaleString();
-              } else if (typeof data.timestamp === 'string') {
-                timestamp = new Date(data.timestamp).toLocaleString();
-              } else if (typeof data.timestamp === 'number') {
-                timestamp = new Date(data.timestamp).toLocaleString();
-              }
-            }
-            
-            return {
-              Temperature: data.temperature,
-              Humidity: data.humidity,
-              SENSOR_1: data.sgp40_raw,
-              SENSOR_2: data.mq2_adc,
-              Timestamp: timestamp
-            };
-          })
-        );
+        const subsessionInfo = [
+          ['Subsession ID', subsession._id],
+          ['Timestamp', formatTimestamp(subsession.timestamp)],
+          [''],
+          ['Temperature', 'Humidity', 'SGP40', 'MQ2', 'Timestamp']
+        ];
 
+        const sensorRows = sensorData.map(data => [
+          data.temperature,
+          data.humidity,
+          data.sgp40_raw,
+          data.mq2_adc,
+          formatTimestamp(data.timestamp)
+        ]);
+
+        const allData = [...subsessionInfo, ...sensorRows];
+        const ws = XLSX.utils.aoa_to_sheet(allData);
         XLSX.utils.book_append_sheet(wb, ws, subsession._id.substring(0, 31));
       }
     }
@@ -3443,7 +3487,7 @@ function ComparePage({ navigateTo, patientData }) {
                     <option value="">Choose session...</option>
                     {patient1Sessions.map((session) => (
                       <option key={session._id} value={session._id}>
-                        {session._id} - {new Date(session.timestamp).toLocaleDateString()}
+                        {session._id} - {formatTimestamp(session.createdAt || session.timestamp)}
                       </option>
                     ))}
                   </select>
@@ -3461,7 +3505,7 @@ function ComparePage({ navigateTo, patientData }) {
                     <option value="">Choose session...</option>
                     {patient1Sessions.map((session) => (
                       <option key={session._id} value={session._id}>
-                        {session._id} - {new Date(session.timestamp).toLocaleDateString()}
+                        {session._id} - {formatTimestamp(session.createdAt || session.timestamp)}
                       </option>
                     ))}
                   </select>
@@ -3518,7 +3562,7 @@ function ComparePage({ navigateTo, patientData }) {
                         <option value="">Choose session...</option>
                         {patient1Sessions.map((session) => (
                           <option key={session._id} value={session._id}>
-                            {session._id} - {new Date(session.timestamp).toLocaleDateString()}
+                            {session._id} - {formatTimestamp(session.createdAt || session.timestamp)}
                           </option>
                         ))}
                       </select>
@@ -3573,7 +3617,7 @@ function ComparePage({ navigateTo, patientData }) {
                         <option value="">Choose session...</option>
                         {patient2Sessions.map((session) => (
                           <option key={session._id} value={session._id}>
-                            {session._id} - {new Date(session.timestamp).toLocaleDateString()}
+                            {session._id} - {formatTimestamp(session.createdAt || session.timestamp)}
                           </option>
                         ))}
                       </select>
@@ -3622,7 +3666,7 @@ function ComparePage({ navigateTo, patientData }) {
                 <p className="text-2xl font-bold mb-1">{comparisonData.session1._id}</p>
                 <p className="text-blue-100">{comparisonData.session1.patientName}</p>
                 <p className="text-sm text-blue-100 mt-2">
-                  {new Date(comparisonData.session1.timestamp).toLocaleString()}
+                  {formatTimestamp(comparisonData.session1.createdAt || comparisonData.session1.timestamp).toLocaleString()}
                 </p>
               </div>
 
